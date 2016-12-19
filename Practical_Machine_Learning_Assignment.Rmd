@@ -1,0 +1,118 @@
+---
+title: "Practical Machine Learning Assignment - Coursera"
+author: "Gautam Mehra"
+date: "12/17/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+## Data Sources
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Loading the libraries
+```{r library}
+library(caret); library(rpart); library(rattle); library(rpart.plot)
+library(randomForest); library(repmis)
+```
+## Fetching The Data
+
+Lets load the training data set first:
+
+```{r train}
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+```
+
+Now, lets load the testing data set:
+```{r test}
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+```
+
+## Cleaning the data
+We need to do remove the predictors to make this data usable for any ML algorithm and also remove rows that have missing prediction outcomes. Lets remove the missing values rows first.
+
+```{r clean_rows}
+training <- training[, colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0]
+```
+
+Now let's remove the unneccessary predictors.
+
+```{r clean_preds}
+training <- training[, -c(1:7)]
+testing <- testing[, -c(1:7)]
+```
+
+## Splitting The Testing Data
+While, we have downloaded the training and testing data sets seperately, we want to further split the training set into 2 subsets. We do this so that we can estimate the out-of-sample errors and hopefully pick an alogirthm that would predict better on the final testing data set.
+
+```{r split}
+set.seed(1398) 
+inTrain <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+train <- training[inTrain, ]
+valid <- training[-inTrain, ]
+```
+
+## Applying Machine Learnign Algortihms
+What we have is a typical classification problem. Hence, we will use decision trees and random forests. These algorthms will be able to look at the large number of features present in the data set and predict the most appropriate class of the activity.
+
+### Decision Tree
+Let's first look at the more simple decision tree. Since this is not a regression or other linear predictive alogirthm, we don't need to peform transformations such as scaling and centering, which we normally would. So, lets straight get to it.
+
+```{r building the rpart model}
+rpart_model <- train(classe ~ ., data = train, method="rpart")
+print(rpart_model, digits = 3)
+fancyRpartPlot(rpart_model$finalModel)
+```
+
+Let's see how it performs now.
+```{r predicting on the rpart model}
+rpart_predict <- predict(rpart_model, valid)
+rpart_matrix <- confusionMatrix(valid$classe, rpart_predict)
+print(rpart_matrix)
+(accuracy_rpart <- rpart_matrix$overall[1])
+```
+
+We observe an accuracy of 0.506. Looking at the above, its quite clear that the classification algorithm didn't do a very good job. 
+
+Let's try another classification alogirthm. Random Forests.
+
+## Random Forests
+
+Lets build our model.
+```{r creating the rf model}
+control <- trainControl(method = "cv", number = 2)
+rf_model <- train(classe ~ ., data = train, method = "rf", trControl = control)
+#rf_model <- randomForest(factor(classe) ~ ., data = train, ntree = 100)
+print(rf_model, digits = 3)
+```
+
+```{r predicting on the rf model}
+rf_predict <- predict(rf_model, valid)
+rf_confusion <- confusionMatrix(valid$classe, rf_predict)
+print(rf_confusion)
+(accuracy_rf <- rf_confusion$overall[1])
+```
+We observed an accuracy of 0.995. This is a great number and a substantial increase from our classification tree. This is due to the fact that random forests use multiple trees and combine several weak models to create a strong prediction model which is less bias and more accurate.
+
+## Prediction On The First Test Set
+Since, our Random Forest model worked far better. We will use this for the now predicting against our test set.
+
+```{r final prediction}
+predict(rf_model, testing)
+```
+
+This concludes our project.
